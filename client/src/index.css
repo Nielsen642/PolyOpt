@@ -1,0 +1,119 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    /* Dark Mode Trading Terminal Aesthetic */
+    --background: 240 10% 4%; /* #09090b */
+    --foreground: 0 0% 98%;
+    
+    --card: 240 10% 6%; /* #0f0f11 */
+    --card-foreground: 0 0% 98%;
+    
+    --popover: 240 10% 6%;
+    --popover-foreground: 0 0% 98%;
+    
+    --primary: 217 91% 60%; /* Electric Blue */
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 240 4% 16%;
+    --secondary-foreground: 0 0% 98%;
+    
+    --muted: 240 5% 16%;
+    --muted-foreground: 240 5% 65%;
+    
+    --accent: 217 91% 60%;
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 84% 60%; /* Terminal Red */
+    --destructive-foreground: 0 0% 98%;
+
+    --success: 142 71% 45%; /* Terminal Green */
+    --success-foreground: 0 0% 98%;
+    
+    --border: 240 6% 15%;
+    --input: 240 6% 15%;
+    --ring: 217 91% 60%;
+    
+    --radius: 0.5rem;
+    
+    --chart-1: 217 91% 60%;
+    --chart-2: 142 71% 45%;
+    --chart-3: 0 84% 60%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    
+    --sidebar-background: 240 10% 4%;
+    --sidebar-foreground: 240 5% 65%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 5% 12%;
+    --sidebar-accent-foreground: 240 5% 96%;
+    --sidebar-border: 240 6% 15%;
+    --sidebar-ring: 217 91% 60%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased selection:bg-primary/30 selection:text-primary-foreground;
+    font-family: var(--font-sans);
+    background-image: 
+      radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.05) 0%, transparent 50%),
+      radial-gradient(circle at 100% 100%, rgba(16, 185, 129, 0.02) 0%, transparent 50%);
+    background-attachment: fixed;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+
+  /* Trading terminal specific text utilities */
+  .font-mono-data {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-card/60 backdrop-blur-xl border border-border shadow-xl shadow-black/20;
+  }
+  
+  .glow-text-green {
+    text-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+    @apply text-emerald-400;
+  }
+  
+  .glow-text-red {
+    text-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+    @apply text-red-400;
+  }
+
+  .glow-text-blue {
+    text-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+    @apply text-blue-400;
+  }
+
+  .animate-flash-green {
+    animation: flash-green 1s ease-out;
+  }
+
+  .animate-flash-red {
+    animation: flash-red 1s ease-out;
+  }
+}
+
+@keyframes flash-green {
+  0% { background-color: rgba(16, 185, 129, 0.3); color: #34d399; }
+  100% { background-color: transparent; }
+}
+
+@keyframes flash-red {
+  0% { background-color: rgba(239, 68, 68, 0.3); color: #f87171; }
+  100% { background-color: transparent; }
+}

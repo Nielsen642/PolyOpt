@@ -1,0 +1,12 @@
+[project]
+name = "market-hedge-optimizer"
+version = "0.1.0"
+description = "CVaR portfolio optimizer for Market Hedge Bot (server/optimize.py)"
+requires-python = ">=3.12"
+dependencies = [
+    "cvxpy>=1.8.1",
+    "numpy>=2.4.2",
+    "pandas>=3.0.1",
+    "pydantic>=2.12.5",
+    "scipy>=1.17.1",
+]
