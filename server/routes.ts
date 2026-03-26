@@ -106,6 +106,10 @@ export async function registerRoutes(
   async function getState(userId: number) {
     const assembledAt = new Date().toISOString();
     const user = await storage.getUser(userId);
+    const polymarketVirtualPortfolio = {
+      ...POLYMARKET_VIRTUAL_PORTFOLIO,
+      name: user?.username ?? POLYMARKET_VIRTUAL_PORTFOLIO.name,
+    };
     const dataWallet =
       config.polymarketWalletAddress ||
       user?.walletAddress?.trim() ||
@@ -131,7 +135,7 @@ export async function registerRoutes(
 
     if (!dataWallet) {
       return {
-        portfolios: [normalizePortfolio(POLYMARKET_VIRTUAL_PORTFOLIO)],
+        portfolios: [normalizePortfolio(polymarketVirtualPortfolio)],
         positions: [] as ReturnType<typeof normalizePolymarketPositions>,
         markets: [] as Awaited<ReturnType<typeof normalizePolymarketMarkets>>,
         feedMeta: emptyMeta,
@@ -192,7 +196,7 @@ export async function registerRoutes(
             : ("partial" as const);
 
       return {
-        portfolios: [normalizePortfolio(POLYMARKET_VIRTUAL_PORTFOLIO)],
+        portfolios: [normalizePortfolio(polymarketVirtualPortfolio)],
         positions,
         markets,
         feedMeta: {
@@ -211,7 +215,7 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Polymarket getState error:", err);
       return {
-        portfolios: [normalizePortfolio(POLYMARKET_VIRTUAL_PORTFOLIO)],
+        portfolios: [normalizePortfolio(polymarketVirtualPortfolio)],
         positions: [],
         markets: [],
         feedMeta: {
@@ -235,8 +239,11 @@ export async function registerRoutes(
       return null;
     }
     const state = await getState(userId);
+    const virtualPortfolioRecord =
+      state.portfolios.find((p) => p.id === POLYMARKET_VIRTUAL_PORTFOLIO.id) ??
+      normalizePortfolio(POLYMARKET_VIRTUAL_PORTFOLIO);
     const detail = buildPortfolioDetail(
-      normalizePortfolio(POLYMARKET_VIRTUAL_PORTFOLIO),
+      virtualPortfolioRecord,
       state.positions,
       state.markets,
     );
@@ -876,10 +883,14 @@ export async function registerRoutes(
     if (raw !== "crypto" && raw !== "sports" && raw !== "politics") {
       return res.status(400).json({ message: "Invalid category" });
     }
+    const rawLimit = Number(req.query.limit);
+    const limit = Number.isFinite(rawLimit)
+      ? Math.min(50, Math.max(1, Math.trunc(rawLimit)))
+      : 24;
     try {
       const markets = await fetchTopMarketsByCategory(
         raw as "crypto" | "sports" | "politics",
-        10,
+        limit,
         {
           timeoutMs: config.polymarketGammaTimeoutMs,
           retryAttempts: config.polymarketRetryAttempts,

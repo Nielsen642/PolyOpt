@@ -1,18 +1,48 @@
 import type { DashboardData } from "@shared/schema";
 import { Link } from "wouter";
+import type { MouseEvent } from "react";
 import { ChevronRight, Briefcase } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatPercent, formatSignedCurrency } from "@/lib/formatters";
+import { useWallet } from "@/hooks/use-wallet";
+import { useAppKit } from "@reown/appkit/react";
+import { toast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 
 type DashboardPortfolio = DashboardData["portfolios"][number];
 
 export function PortfolioCard({ item }: { item: DashboardPortfolio }) {
   const { portfolio, summary } = item;
   const positivePnl = summary.unrealizedPnl >= 0;
+  const { walletAddress, isConnecting } = useWallet();
+  const { open } = useAppKit();
+
+  const isPolymarketAccount = portfolio.id === 1;
+
+  const handleCardClick = (e: MouseEvent) => {
+    if (!isPolymarketAccount) return;
+    if (walletAddress) return;
+    e.preventDefault();
+
+    toast({
+      title: "Wallet required",
+      description: "Connect your wallet to view your Polymarket account portfolio.",
+      variant: "destructive",
+      action: (
+        <ToastAction altText="Connect wallet" onClick={() => void open()}>
+          {isConnecting ? "Connecting..." : "Connect Wallet"}
+        </ToastAction>
+      ),
+    });
+  };
 
   return (
-    <Link href={`/portfolio/${portfolio.id}`} className="block h-full">
+    <Link
+      href={`/portfolio/${portfolio.id}`}
+      className="block h-full"
+      onClick={handleCardClick}
+    >
       <Card className="glass-panel h-full border-border/50 transition-all duration-300 hover:border-primary/50">
         <CardContent className="flex h-full flex-col justify-between p-6">
           <div>

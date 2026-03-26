@@ -8,6 +8,7 @@ type ScanCategory = "crypto" | "sports" | "politics";
 
 interface ScannedMarket {
   id: string;
+  title: string;
   conditionId: string;
   clobTokenIds: string[];
   outcomes: string[];
@@ -95,6 +96,9 @@ export default function MarketScanPage() {
               className="glass-panel border-border/50 bg-black/40 hover:border-primary/40 transition-colors"
             >
               <CardHeader>
+                <CardTitle className="line-clamp-2 text-base leading-snug">
+                  {m.title}
+                </CardTitle>
                 <div className="flex items-center justify-between gap-2">
                   <Badge
                     variant="outline"
@@ -160,7 +164,7 @@ export default function MarketScanPage() {
                       rel="noreferrer"
                       className="font-medium text-primary hover:underline"
                     >
-                      Q&amp;A
+                      Open market
                     </a>
                   )}
                 </div>

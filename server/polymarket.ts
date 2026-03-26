@@ -81,24 +81,30 @@ export interface PolymarketMarket {
   condition_id?: string;
   question?: string;
   title?: string;
-  clobTokenIds?: string[];
-  outcomes?: string[];
-  tokens?: Array<{ token_id: string; outcome: string }>;
+  clobTokenIds?: string[] | string;
+  outcomes?: string[] | string;
+  tokens?: Array<{ token_id?: string; tokenId?: string; outcome?: string; name?: string }> | string;
   outcomePrices?: string | number[]; 
   volume?: number;
   volume24hr?: number;
+  openInterest?: number;
+  openInterestNum?: number;
   liquidity?: number;
   liquidityNum?: number;
   enableOrderBook?: boolean;
   active?: boolean;
   closed?: boolean;
   slug?: string;
+  archived?: boolean;
+  events?: Array<{ slug?: string; title?: string }>;
+  category?: string;
   // Gamma markets include tags and categories; keep them generic.
-  tags?: Array<{ id: string; name: string }>;
+  tags?: Array<{ id?: string; name?: string; label?: string; slug?: string }>;
 }
 
 export interface ScannedMarket {
   id: string;
+  title: string;
   conditionId: string;
   clobTokenIds: string[];
   outcomes: string[];
@@ -137,6 +143,83 @@ function parseNum(s: string | number | undefined): number {
   if (typeof s === "number") return s;
   const n = Number(s);
   return Number.isNaN(n) ? 0 : n;
+}
+
+function parseStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === "string" ? item : String(item ?? "")))
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  if (typeof value === "string") {
+    const raw = value.trim();
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((item) => (typeof item === "string" ? item : String(item ?? "")))
+          .map((item) => item.trim())
+          .filter(Boolean);
+      }
+    } catch {
+      // Some responses may be comma-separated instead of JSON.
+      return raw
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+  }
+  return [];
+}
+
+function parseTokens(value: unknown): Array<{ token_id: string; outcome: string }> {
+  const normalize = (item: unknown) => {
+    const token = item as { token_id?: unknown; tokenId?: unknown; outcome?: unknown; name?: unknown };
+    const tokenIdRaw = token?.token_id ?? token?.tokenId;
+    const tokenId = typeof tokenIdRaw === "string" ? tokenIdRaw : String(tokenIdRaw ?? "").trim();
+    const outcomeRaw = token?.outcome ?? token?.name;
+    const outcome = typeof outcomeRaw === "string" ? outcomeRaw : String(outcomeRaw ?? "").trim();
+    if (!tokenId) return null;
+    return { token_id: tokenId, outcome };
+  };
+
+  if (Array.isArray(value)) {
+    return value.map(normalize).filter((v): v is { token_id: string; outcome: string } => !!v);
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.map(normalize).filter((v): v is { token_id: string; outcome: string } => !!v);
+      }
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function parseNumberArray(value: unknown): number[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => (typeof v === "number" ? v : Number(v)))
+      .filter((n) => Number.isFinite(n));
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((v) => (typeof v === "number" ? v : Number(v)))
+          .filter((n) => Number.isFinite(n));
+      }
+    } catch {
+      return [];
+    }
+  }
+  return [];
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -234,31 +317,106 @@ export async function fetchMarketsForPositions(
   return result;
 }
 
-const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  crypto: ["crypto", "bitcoin", "btc", "eth", "ethereum"],
-  sports: ["sports", "game", "match", "nba", "nfl", "mlb", "nhl", "soccer", "football"],
-  politics: ["politic", "election", "vote", "primary", "president", "senate", "governor"],
+const CATEGORY_KEYWORDS: Record<"crypto" | "sports" | "politics", string[]> = {
+  crypto: [
+    "crypto",
+    "bitcoin",
+    "btc",
+    "ethereum",
+    "eth",
+    "solana",
+    "sol",
+    "doge",
+    "xrp",
+    "defi",
+    "binance",
+    "coinbase",
+  ],
+  sports: [
+    "sports",
+    "game",
+    "match",
+    "nba",
+    "nfl",
+    "mlb",
+    "nhl",
+    "soccer",
+    "football",
+    "tennis",
+    "ufc",
+    "f1",
+    "golf",
+  ],
+  politics: [
+    "politic",
+    "election",
+    "vote",
+    "primary",
+    "president",
+    "senate",
+    "governor",
+    "congress",
+    "parliament",
+    "minister",
+    "trump",
+    "biden",
+  ],
 };
 
-function marketMatchesCategory(market: PolymarketMarket, category: keyof typeof CATEGORY_KEYWORDS): boolean {
+function marketText(market: PolymarketMarket): string {
   const tags = market.tags ?? [];
-  const haystack = [
+  const eventTitles = market.events?.map((event) => event.title).filter(Boolean) ?? [];
+  return [
     market.title,
     market.question,
-    ...tags.map((t) => t.name),
+    market.category,
+    market.slug,
+    ...eventTitles,
+    ...tags.map((t) => t.name ?? t.label ?? t.slug),
   ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+}
 
-  return CATEGORY_KEYWORDS[category].some((needle) =>
-    haystack.includes(needle.toLowerCase()),
+function marketCategoryScore(
+  market: PolymarketMarket,
+  category: keyof typeof CATEGORY_KEYWORDS,
+): number {
+  const haystack = marketText(market);
+  if (!haystack) return 0;
+  const keywords = CATEGORY_KEYWORDS[category];
+  let score = 0;
+  for (const keyword of keywords) {
+    if (haystack.includes(keyword)) {
+      score += keyword.length > 5 ? 2 : 1;
+    }
+  }
+  if ((market.category ?? "").toLowerCase().includes(category.toLowerCase())) {
+    score += 3;
+  }
+  return score;
+}
+
+function primaryMarketTitle(market: PolymarketMarket, conditionId: string): string {
+  return (
+    market.question ??
+    market.title ??
+    market.events?.find((event) => typeof event.title === "string" && event.title.trim().length > 0)?.title ??
+    `Market ${conditionId.slice(0, 10)}...`
   );
+}
+
+function marketActivityScore(market: PolymarketMarket): number {
+  const volume24h = parseNum(market.volume24hr);
+  const openInterest = parseNum(market.openInterestNum ?? market.openInterest);
+  const liquidity = parseNum(market.liquidityNum ?? market.liquidity);
+  return volume24h * 1.2 + openInterest * 0.8 + liquidity * 0.4;
 }
 
 export async function fetchTopMarketsByCategory(
   category: "crypto" | "sports" | "politics",
-  limit = 10,
+  limit = 24,
   opts?: Partial<PolymarketFetchOptions>,
 ): Promise<ScannedMarket[]> {
   const effective: PolymarketFetchOptions = {
@@ -267,11 +425,12 @@ export async function fetchTopMarketsByCategory(
     retryBaseDelayMs: opts?.retryBaseDelayMs ?? 500,
   };
   // Fetch a broad slice of markets from Gamma and filter client-side.
-  const res = await fetchWithRetry(
-    "https://gamma-api.polymarket.com/markets?limit=200",
-    { method: "GET" },
-    effective,
-  );
+  const url = new URL("https://gamma-api.polymarket.com/markets");
+  url.searchParams.set("limit", "400");
+  url.searchParams.set("active", "true");
+  url.searchParams.set("closed", "false");
+
+  const res = await fetchWithRetry(url.toString(), { method: "GET" }, effective);
   if (!res.ok) {
     throw new Error(
       `Gamma markets request failed: ${res.status} ${res.statusText}`,
@@ -279,49 +438,51 @@ export async function fetchTopMarketsByCategory(
   }
   const all = (await res.json()) as PolymarketMarket[];
 
-  let markets = all.filter((m) => marketMatchesCategory(m, category));
-  if (markets.length === 0) {
-    markets = all;
+  const live = all.filter((m) => m.active !== false && m.closed !== true && m.archived !== true);
+  const scored = live
+    .map((market) => ({
+      market,
+      relevance: marketCategoryScore(market, category),
+      activity: marketActivityScore(market),
+    }))
+    .filter((entry) => entry.relevance > 0)
+    .sort((left, right) => {
+      if (right.relevance !== left.relevance) return right.relevance - left.relevance;
+      return right.activity - left.activity;
+    });
+
+  const deduped = new Map<string, (typeof scored)[number]>();
+  for (const entry of scored) {
+    const m = entry.market;
+    const cid = m.conditionId ?? m.condition_id ?? "";
+    const dedupeKey =
+      cid ||
+      (m.slug ? `slug:${m.slug.toLowerCase()}` : `title:${primaryMarketTitle(m, cid).toLowerCase()}`);
+    if (!deduped.has(dedupeKey)) {
+      deduped.set(dedupeKey, entry);
+    }
   }
 
-  markets.sort((a, b) => (b.volume24hr ?? 0) - (a.volume24hr ?? 0));
-  const top = markets.slice(0, limit);
-  return top.map((m) => {
+  const top = Array.from(deduped.values()).slice(0, Math.max(1, limit));
+  return top.map(({ market: m }) => {
     const cid = m.conditionId ?? m.condition_id ?? "";
-    const tokens = m.tokens ?? [];
-    const clobTokenIds =
-      m.clobTokenIds && m.clobTokenIds.length > 0
-        ? m.clobTokenIds
-        : tokens.map((t) => t.token_id);
-    const outcomes =
-      m.outcomes && m.outcomes.length > 0
-        ? m.outcomes
-        : tokens.map((t) => t.outcome);
-
-    let outcomePrices: number[] = [];
-    if (Array.isArray(m.outcomePrices)) {
-      outcomePrices = m.outcomePrices.map((v) =>
-        typeof v === "number" ? v : Number(v),
-      );
-    } else if (typeof m.outcomePrices === "string") {
-      try {
-        const parsed = JSON.parse(m.outcomePrices) as string[] | number[];
-        outcomePrices = (parsed as (string | number)[]).map((v) =>
-          typeof v === "number" ? v : Number(v),
-        );
-      } catch {
-        outcomePrices = [];
-      }
-    }
+    const tokens = parseTokens(m.tokens);
+    const clobTokenIds = parseStringArray(m.clobTokenIds);
+    const outcomes = parseStringArray(m.outcomes);
+    const outcomePrices = parseNumberArray(m.outcomePrices);
+    const fallbackTokenIds = tokens.map((t) => t.token_id).filter(Boolean);
+    const fallbackOutcomes = tokens.map((t) => t.outcome).filter(Boolean);
+    const eventSlug = m.events?.find((e) => typeof e.slug === "string" && e.slug.trim().length > 0)?.slug;
 
     return {
       id: m.id ?? cid,
+      title: primaryMarketTitle(m, cid),
       conditionId: cid,
-      clobTokenIds,
-      outcomes,
+      clobTokenIds: clobTokenIds.length > 0 ? clobTokenIds : fallbackTokenIds,
+      outcomes: outcomes.length > 0 ? outcomes : fallbackOutcomes,
       outcomePrices,
       volume24hr: m.volume24hr ?? 0,
-      slug: m.slug,
+      slug: eventSlug ?? m.slug,
     };
   });
 }
@@ -646,11 +807,12 @@ export async function getMarketTokenIds(
     const set = new Set(conditionIds);
     for (const m of markets) {
       const cid = m.conditionId ?? m.condition_id ?? "";
-      if (!set.has(cid) || !m.tokens?.length) continue;
-      const yesToken = m.tokens.find((t) => (t.outcome || "").toLowerCase() === "yes");
-      const noToken = m.tokens.find((t) => (t.outcome || "").toLowerCase() === "no");
-      const yesTokenId = (yesToken as { token_id?: string })?.token_id ?? "";
-      const noTokenId = (noToken as { token_id?: string })?.token_id ?? "";
+      const tokens = parseTokens(m.tokens);
+      if (!set.has(cid) || tokens.length === 0) continue;
+      const yesToken = tokens.find((t) => (t.outcome || "").toLowerCase() === "yes");
+      const noToken = tokens.find((t) => (t.outcome || "").toLowerCase() === "no");
+      const yesTokenId = yesToken?.token_id ?? "";
+      const noTokenId = noToken?.token_id ?? "";
       if (yesTokenId || noTokenId) result[cid] = { yesTokenId, noTokenId };
     }
   } catch {
