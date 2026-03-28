@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRoute } from "wouter";
 import { usePortfolioDetails } from "@/hooks/use-portfolios";
 import { useOptimize } from "@/hooks/use-optimization";
@@ -17,12 +17,20 @@ import { useLocalStorageState } from "@/hooks/use-local-storage";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useQuery } from "@tanstack/react-query";
 import { proApi } from "@/lib/api";
+import { useWallet } from "@/hooks/use-wallet";
+import { useBalance } from "wagmi";
 
 export default function PortfolioDetails() {
   const [, params] = useRoute("/portfolio/:id");
   const portfolioId = Number(params?.id);
   
   const { data: detail, isLoading: isPortfolioLoading } = usePortfolioDetails(portfolioId);
+  const { walletAddress } = useWallet();
+  const walletBalanceQuery = useBalance({
+    address: walletAddress ? (walletAddress as `0x${string}`) : undefined,
+    chainId: 137,
+    query: { enabled: Boolean(walletAddress) },
+  });
   const optimize = useOptimize(portfolioId);
   const [budget, setBudget] = useState("1000");
   const [riskTolerance, setRiskTolerance] = useState("0.45");
@@ -55,6 +63,7 @@ export default function PortfolioDetails() {
     stressBefore?: number;
     stressAfter?: number;
   }>>("polyopt-audit-trail", []);
+  const lastAutofilledWalletRef = useRef<string | null>(null);
 
   const handleOptimize = () => {
     if (!detail || detail.positions.length === 0) return;
@@ -107,6 +116,24 @@ export default function PortfolioDetails() {
 
   const optimizationData = optimize.data;
   const summary = detail?.summary;
+
+  useEffect(() => {
+    if (!walletAddress) {
+      lastAutofilledWalletRef.current = null;
+      return;
+    }
+    const balance = walletBalanceQuery.data;
+    if (!balance) return;
+    if (lastAutofilledWalletRef.current === walletAddress) return;
+
+    // Use connected wallet balance as default budget on connect.
+    const n = Number(balance.formatted);
+    if (Number.isFinite(n)) {
+      setBudget(n.toFixed(4));
+      lastAutofilledWalletRef.current = walletAddress;
+    }
+  }, [walletAddress, walletBalanceQuery.data]);
+
   const topContributors = useMemo(() => {
     if (!detail?.positions) return [];
     return [...detail.positions]
@@ -210,32 +237,36 @@ export default function PortfolioDetails() {
       {summary && <PortfolioSummaryCards summary={summary} />}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:items-stretch">
-        <Card className="glass-panel flex min-h-0 flex-col border-border/50 lg:col-span-2 lg:row-start-1 lg:max-h-[min(56rem,calc(100vh-13rem))] lg:min-h-[24rem]">
+        <Card className="glass-panel flex flex-col border-border/50 lg:col-span-2 lg:row-start-1 lg:min-h-[36rem]">
           <CardHeader className="shrink-0">
             <CardTitle className="text-lg">Position Analytics</CardTitle>
           </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain pt-0">
+          <CardContent className="flex flex-1 flex-col pt-0">
             {isPortfolioLoading ? (
               <div className="flex h-40 flex-1 items-center justify-center">
                 <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary"></div>
               </div>
             ) : (
-              <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto">
+              <div className="flex-1 overflow-x-auto">
                 <PositionsTable positions={detail?.positions ?? []} />
               </div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="glass-panel flex min-h-0 flex-col border-primary/20 bg-gradient-to-b from-card/80 to-primary/5 lg:col-span-1 lg:row-start-1 lg:max-h-[min(56rem,calc(100vh-13rem))] lg:min-h-[24rem]">
+        <Card className="glass-panel flex flex-col border-primary/20 bg-gradient-to-b from-card/80 to-primary/5 lg:col-span-1 lg:row-start-1 lg:min-h-[36rem]">
           <CardHeader className="shrink-0">
             <CardTitle className="text-lg">Optimization Engine</CardTitle>
           </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 flex-col space-y-6 overflow-y-auto overscroll-contain pt-0">
+          <CardContent className="flex flex-1 flex-col space-y-6 pt-0">
               <div className="space-y-2">
-                <Label className="text-muted-foreground text-xs uppercase tracking-wider">Allocation Budget ($)</Label>
+                <Label className="text-muted-foreground text-xs uppercase tracking-wider">
+                  Allocation Budget ({walletBalanceQuery.data?.symbol ?? "$"})
+                </Label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                    {walletBalanceQuery.data?.symbol ?? "$"}
+                  </span>
                   <Input 
                     type="number" 
                     value={budget} 
@@ -373,8 +404,7 @@ export default function PortfolioDetails() {
           </CardContent>
         </Card>
 
-        {/* Row 2 (lg): full-width optimization results under Position Analytics column */}
-        <div className="flex flex-col gap-6 lg:col-span-2 lg:row-start-2">
+        <div className="flex w-full flex-col gap-6 lg:col-span-3 lg:col-start-1 lg:row-start-2">
           {optimizationData ? <OptimizationResults result={optimizationData} /> : null}
         </div>
       </div>

@@ -65,6 +65,8 @@ export function OptimizationResults({ result }: { result: OptimizationResponse }
 
   const estimateFee = (amount: number) => amount * 0.003;
   const estimateFillPct = (amount: number) => Math.max(0.6, Math.min(0.99, 1 - amount / 2_000_000));
+  const formatMarketIdShort = (marketId: string) =>
+    marketId.length <= 8 ? marketId : `${marketId.slice(0, 4)}...${marketId.slice(-4)}`;
 
   async function placeOrder(trade: OptimizationResponse["trades"][number]) {
     const key = `${trade.marketId}-${trade.tradeType}`;
@@ -78,15 +80,33 @@ export function OptimizationResults({ result }: { result: OptimizationResponse }
     setMessages((m) => ({ ...m, [key]: "Submitting..." }));
 
     try {
+      if (!serverClobRelay) {
+        const missing = Object.entries(headers)
+          .filter(([, value]) => !value.trim())
+          .map(([name]) => name);
+        if (missing.length > 0) {
+          setStatuses((s) => ({ ...s, [key]: "failed" }));
+          setMessages((m) => ({
+            ...m,
+            [key]: `Missing execution headers: ${missing.join(", ")}.`,
+          }));
+          return;
+        }
+      }
+
       const tokenMapRes = await fetch(`/api/polymarket/tokens?conditionIds=${encodeURIComponent(trade.marketId)}`, {
         credentials: "include",
       });
+      if (!tokenMapRes.ok) {
+        const errorText = await tokenMapRes.text();
+        throw new Error(errorText || "Token resolution request failed.");
+      }
       const tokenMap = (await tokenMapRes.json()) as Record<string, { yesTokenId: string; noTokenId: string }>;
       const tokenInfo = tokenMap[trade.marketId];
       const tokenId = trade.tradeType === "buy_yes" ? tokenInfo?.yesTokenId : tokenInfo?.noTokenId;
       if (!tokenId) {
         setStatuses((s) => ({ ...s, [key]: "failed" }));
-        setMessages((m) => ({ ...m, [key]: "Token resolution failed." }));
+        setMessages((m) => ({ ...m, [key]: "Token resolution failed for this market. Try again in a few seconds." }));
         return;
       }
 
@@ -111,7 +131,11 @@ export function OptimizationResults({ result }: { result: OptimizationResponse }
         setMessages((m) => ({ ...m, [key]: "Partially filled" }));
       } else {
         setStatuses((s) => ({ ...s, [key]: "failed" }));
-        setMessages((m) => ({ ...m, [key]: relay.errorMsg || "Order failed" }));
+        const fallback =
+          relay.statusCode === 403
+            ? "Authorization failed at Polymarket. Verify POLY_* credentials for this wallet."
+            : `Order failed (${relay.statusCode}).`;
+        setMessages((m) => ({ ...m, [key]: relay.errorMsg || fallback }));
       }
     } catch (e) {
       setStatuses((s) => ({ ...s, [key]: "failed" }));
@@ -122,7 +146,7 @@ export function OptimizationResults({ result }: { result: OptimizationResponse }
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full space-y-6">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="CVaR Improvement" value={formatSignedCurrency(result.metrics.cvarBefore - result.metrics.cvarAfter)} />
         <MetricCard label="Stress Loss Improvement" value={formatSignedCurrency(result.metrics.stressLossBefore - result.metrics.stressLossAfter)} />
@@ -196,7 +220,9 @@ export function OptimizationResults({ result }: { result: OptimizationResponse }
                             trade.question
                           )}
                         </div>
-                        <div className="font-mono-data text-xs text-muted-foreground">{trade.marketId}</div>
+                        <div className="font-mono-data text-xs text-muted-foreground" title={trade.marketId}>
+                          {formatMarketIdShort(trade.marketId)}
+                        </div>
                       </TableCell>
                       <TableCell className={trade.tradeType === "buy_yes" ? "text-emerald-400" : "text-red-400"}>
                         {trade.tradeType.replace("_", " ").toUpperCase()}

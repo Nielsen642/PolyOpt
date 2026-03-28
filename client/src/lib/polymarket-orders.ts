@@ -117,7 +117,13 @@ export type PolyRelayHeaders = Partial<
 export async function submitOrderRelay(
   payload: SendOrderPayload,
   polyHeaders: PolyRelayHeaders,
-): Promise<{ success: boolean; orderID?: string; status?: string; errorMsg?: string }> {
+): Promise<{
+  success: boolean;
+  orderID?: string;
+  status?: string;
+  errorMsg?: string;
+  statusCode: number;
+}> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   for (const [k, v] of Object.entries(polyHeaders)) {
     if (v && String(v).trim()) headers[k] = v;
@@ -128,5 +134,19 @@ export async function submitOrderRelay(
     headers,
     body: JSON.stringify(payload),
   });
-  return res.json();
+  const body = await res.json().catch(async () => {
+    const text = await res.text().catch(() => "");
+    return text ? { errorMsg: text } : {};
+  });
+  const parsed =
+    body && typeof body === "object"
+      ? (body as { success?: boolean; orderID?: string; status?: string; errorMsg?: string })
+      : { errorMsg: String(body ?? "") };
+  return {
+    success: Boolean(parsed.success) && res.ok,
+    orderID: parsed.orderID,
+    status: parsed.status,
+    errorMsg: parsed.errorMsg,
+    statusCode: res.status,
+  };
 }

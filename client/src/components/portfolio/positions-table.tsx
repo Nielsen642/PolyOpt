@@ -11,6 +11,12 @@ import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatPercent, formatSignedCurrency } from "@/lib/formatters";
 
 export function PositionsTable({ positions }: { positions: PositionAnalytics[] }) {
+  const shortId = (value: string) => {
+    const trimmed = String(value ?? "");
+    if (trimmed.length <= 10) return trimmed;
+    return `${trimmed.slice(0, 4)}…${trimmed.slice(-4)}`;
+  };
+
   if (positions.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border/50 bg-black/20 py-10 text-center text-muted-foreground">
@@ -51,7 +57,12 @@ export function PositionsTable({ positions }: { positions: PositionAnalytics[] }
                     position.question
                   )}
                 </div>
-                <div className="font-mono-data text-xs text-muted-foreground">{position.marketId}</div>
+                <div
+                  className="font-mono-data text-xs text-muted-foreground"
+                  title={position.marketId}
+                >
+                  {shortId(position.marketId)}
+                </div>
               </TableCell>
               <TableCell>
                 <Badge

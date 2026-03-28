@@ -795,28 +795,74 @@ export async function getMarketTokenIds(
     retryBaseDelayMs: opts?.retryBaseDelayMs ?? 500,
   };
   const result: Record<string, { yesTokenId: string; noTokenId: string }> = {};
-  if (conditionIds.length === 0) return result;
+  const uniqueConditionIds = Array.from(new Set(conditionIds.map((id) => id.trim()).filter(Boolean)));
+  if (uniqueConditionIds.length === 0) return result;
+
+  const normalizeOutcome = (value: string) => value.trim().toLowerCase();
+  const extractTokenPair = (market: PolymarketMarket): { yesTokenId: string; noTokenId: string } => {
+    let yesTokenId = "";
+    let noTokenId = "";
+
+    const tokens = parseTokens(market.tokens);
+    for (const token of tokens) {
+      const outcome = normalizeOutcome(token.outcome || "");
+      if (!yesTokenId && (outcome === "yes" || outcome.includes("yes"))) {
+        yesTokenId = token.token_id;
+      } else if (!noTokenId && (outcome === "no" || outcome.includes("no"))) {
+        noTokenId = token.token_id;
+      }
+    }
+
+    if (!yesTokenId || !noTokenId) {
+      const clobTokenIds = parseStringArray(market.clobTokenIds);
+      const outcomes = parseStringArray(market.outcomes);
+      for (let i = 0; i < Math.min(clobTokenIds.length, outcomes.length); i += 1) {
+        const outcome = normalizeOutcome(outcomes[i] || "");
+        if (!yesTokenId && (outcome === "yes" || outcome.includes("yes"))) {
+          yesTokenId = clobTokenIds[i];
+        } else if (!noTokenId && (outcome === "no" || outcome.includes("no"))) {
+          noTokenId = clobTokenIds[i];
+        }
+      }
+    }
+
+    return { yesTokenId, noTokenId };
+  };
+
+  async function fetchGammaMarketsByConditionIds(batch: string[]): Promise<PolymarketMarket[]> {
+    const attempts: string[] = [`[${batch.join(",")}]`, batch.join(",")];
+    for (const condIdsValue of attempts) {
+      const url = new URL("https://gamma-api.polymarket.com/markets");
+      url.searchParams.set("condition_ids", condIdsValue);
+      try {
+        const res = await fetchWithRetry(url.toString(), { method: "GET" }, effective);
+        if (!res.ok) continue;
+        const data = (await res.json()) as PolymarketMarket[];
+        if (Array.isArray(data) && data.length > 0) return data;
+      } catch {
+        // try next encoding
+      }
+    }
+    return [];
+  }
+
   try {
-    const res = await fetchWithRetry(
-      "https://gamma-api.polymarket.com/markets?limit=500",
-      { method: "GET" },
-      effective,
-    );
-    if (!res.ok) return result;
-    const markets = (await res.json()) as PolymarketMarket[];
-    const set = new Set(conditionIds);
-    for (const m of markets) {
-      const cid = m.conditionId ?? m.condition_id ?? "";
-      const tokens = parseTokens(m.tokens);
-      if (!set.has(cid) || tokens.length === 0) continue;
-      const yesToken = tokens.find((t) => (t.outcome || "").toLowerCase() === "yes");
-      const noToken = tokens.find((t) => (t.outcome || "").toLowerCase() === "no");
-      const yesTokenId = yesToken?.token_id ?? "";
-      const noTokenId = noToken?.token_id ?? "";
-      if (yesTokenId || noTokenId) result[cid] = { yesTokenId, noTokenId };
+    const pageLimit = 50;
+    for (let i = 0; i < uniqueConditionIds.length; i += pageLimit) {
+      const batch = uniqueConditionIds.slice(i, i + pageLimit);
+      const markets = await fetchGammaMarketsByConditionIds(batch);
+      for (const market of markets) {
+        const cid = market.conditionId ?? market.condition_id ?? "";
+        if (!cid) continue;
+        const pair = extractTokenPair(market);
+        if (pair.yesTokenId || pair.noTokenId) {
+          result[cid] = pair;
+        }
+      }
     }
   } catch {
-    // ignore
+    // ignore; best-effort endpoint
   }
+
   return result;
 }

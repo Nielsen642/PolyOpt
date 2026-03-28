@@ -736,12 +736,20 @@ export async function registerRoutes(
       const value = req.get(name);
       if (value) polyHeaders[name] = value;
     }
-    if (config.proMode) {
-      for (const [key, value] of Object.entries(config.clobRelayHeaders)) {
-        if (value && !polyHeaders[key]) {
-          polyHeaders[key] = value;
-        }
+    for (const [key, value] of Object.entries(config.clobRelayHeaders)) {
+      if (value && !polyHeaders[key]) {
+        polyHeaders[key] = value;
       }
+    }
+    const missingHeaders = forwardHeaders.filter((name) => {
+      const value = polyHeaders[name];
+      return !(typeof value === "string" && value.trim().length > 0);
+    });
+    if (missingHeaders.length > 0) {
+      return res.status(400).json({
+        success: false,
+        errorMsg: `Missing Polymarket auth headers: ${missingHeaders.join(", ")}.`,
+      });
     }
     try {
       const r = await fetch("https://clob.polymarket.com/order", {
@@ -749,7 +757,23 @@ export async function registerRoutes(
         headers: { "Content-Type": "application/json", ...polyHeaders },
         body: JSON.stringify(body),
       });
-      const data = await r.json().catch(() => ({}));
+      const rawData = await r.json().catch(async () => {
+        const text = await r.text().catch(() => "");
+        return text ? { errorMsg: text } : {};
+      });
+      const data =
+        rawData && typeof rawData === "object"
+          ? (rawData as Record<string, unknown>)
+          : { message: String(rawData ?? "") };
+      if (!r.ok && !data.errorMsg) {
+        data.errorMsg = `Polymarket CLOB rejected order (${r.status}).`;
+      }
+      if (r.status === 403) {
+        data.errorMsg =
+          typeof data.errorMsg === "string" && data.errorMsg.length > 0
+            ? data.errorMsg
+            : "Polymarket authorization failed. Verify POLY_* API headers and wallet/API-key permissions.";
+      }
       res.status(r.status).json(data);
     } catch (err) {
       console.error("Polymarket order relay error:", err);
@@ -787,6 +811,7 @@ export async function registerRoutes(
   });
 
   app.get(api.pro.meta.path, requireAuth, (_req, res) => {
+    const hasServerRelayHeaders = Object.values(config.clobRelayHeaders).some((v) => Boolean(v));
     res.json(
       api.pro.meta.responses[200].parse({
         proMode: config.proMode,
@@ -795,8 +820,7 @@ export async function registerRoutes(
         staleWarningAfterMs: config.staleWarningAfterMs,
         features: {
           serverAlertPersistence: config.proMode,
-          serverClobRelay:
-            config.proMode && Object.values(config.clobRelayHeaders).some((v) => Boolean(v)),
+          serverClobRelay: hasServerRelayHeaders,
           riskAttributionApi: config.proMode,
           rateLimitedApi: config.proMode,
         },
