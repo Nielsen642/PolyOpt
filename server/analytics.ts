@@ -186,15 +186,23 @@ export function buildPortfolioDetail(
 
   const preliminary = positions.map((position) => {
     const market = marketMap.get(position.marketId);
-    const currentPrice = market?.currentPrice ?? position.entryPrice;
-    const currentValue =
-      position.yesShares * currentPrice + position.noShares * (1 - currentPrice);
+    const markYesPrice = position.apiCurrentPrice ?? market?.currentPrice ?? position.entryPrice;
+    const modelValue = position.yesShares * markYesPrice + position.noShares * (1 - markYesPrice);
+    const currentValue = position.apiCurrentValue ?? modelValue;
     const costBasis =
       position.yesShares * position.entryPrice + position.noShares * (1 - position.entryPrice);
     const pnl = currentValue - costBasis;
-    const yesExposure = position.yesShares * currentPrice;
-    const noExposure = position.noShares * (1 - currentPrice);
+    const yesExposure = position.yesShares * markYesPrice;
+    const noExposure = position.noShares * (1 - markYesPrice);
     const netExposure = yesExposure - noExposure;
+    const side = determineSide(position);
+    const totalShares = position.yesShares + position.noShares;
+    const currentPrice =
+      side === "no"
+        ? 1 - markYesPrice
+        : side === "mixed"
+          ? (totalShares > 0 ? currentValue / totalShares : markYesPrice)
+          : markYesPrice;
 
     return {
       ...position,
@@ -207,7 +215,7 @@ export function buildPortfolioDetail(
       yesExposure,
       noExposure,
       netExposure,
-      side: determineSide(position),
+      side,
     };
   });
 

@@ -10,7 +10,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, formatPercent, formatSignedCurrency } from "@/lib/formatters";
 import { buildLimitOrder, signOrderWithWalletClient, submitOrderRelay } from "@/lib/polymarket-orders";
@@ -22,13 +21,6 @@ export function OptimizationResults({ result }: { result: OptimizationResponse }
   const { walletAddress, walletClient } = useWallet();
   const [statuses, setStatuses] = useState<Record<string, LifecycleStatus>>({});
   const [messages, setMessages] = useState<Record<string, string>>({});
-  const [headers, setHeaders] = useState({
-    POLY_API_KEY: "",
-    POLY_ADDRESS: "",
-    POLY_SIGNATURE: "",
-    POLY_PASSPHRASE: "",
-    POLY_TIMESTAMP: "",
-  });
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [serverClobRelay, setServerClobRelay] = useState(false);
 
@@ -80,20 +72,6 @@ export function OptimizationResults({ result }: { result: OptimizationResponse }
     setMessages((m) => ({ ...m, [key]: "Submitting..." }));
 
     try {
-      if (!serverClobRelay) {
-        const missing = Object.entries(headers)
-          .filter(([, value]) => !value.trim())
-          .map(([name]) => name);
-        if (missing.length > 0) {
-          setStatuses((s) => ({ ...s, [key]: "failed" }));
-          setMessages((m) => ({
-            ...m,
-            [key]: `Missing execution headers: ${missing.join(", ")}.`,
-          }));
-          return;
-        }
-      }
-
       const tokenMapRes = await fetch(`/api/polymarket/tokens?conditionIds=${encodeURIComponent(trade.marketId)}`, {
         credentials: "include",
       });
@@ -119,7 +97,7 @@ export function OptimizationResults({ result }: { result: OptimizationResponse }
           owner: walletAddress,
           orderType: "GTC",
         },
-        serverClobRelay ? {} : headers,
+        {},
       );
 
       const relayStatus = String(relay.status || "").toLowerCase();
@@ -159,28 +137,29 @@ export function OptimizationResults({ result }: { result: OptimizationResponse }
           <CardTitle>Recommended Hedge Trades</CardTitle>
         </CardHeader>
         <CardContent>
-          {serverClobRelay ? (
-            <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs text-muted-foreground">
-              <div className="font-semibold text-emerald-400/90 mb-1">Pro execution</div>
-              CLOB L2 headers are injected on the server from environment variables (
-              <span className="font-mono">POLY_*</span>). Do not paste API secrets in the browser.
+          <div
+            className={`mb-4 rounded-lg border p-3 text-xs text-muted-foreground ${
+              serverClobRelay
+                ? "border-emerald-500/30 bg-emerald-500/5"
+                : "border-amber-500/30 bg-amber-500/5"
+            }`}
+          >
+            <div className={`font-semibold mb-1 ${serverClobRelay ? "text-emerald-400/90" : "text-amber-400/90"}`}>
+              {serverClobRelay ? "Server order relay" : "Order relay not configured"}
             </div>
-          ) : (
-            <div className="mb-4 rounded-lg border border-border/50 bg-black/20 p-3 text-xs text-muted-foreground">
-              <div className="font-semibold text-foreground mb-1">Pre-trade auth headers (sandbox)</div>
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                {Object.entries(headers).map(([k, v]) => (
-                  <Input
-                    key={k}
-                    value={v}
-                    placeholder={k}
-                    onChange={(e) => setHeaders((h) => ({ ...h, [k]: e.target.value }))}
-                    className="h-8 bg-black/40 font-mono-data text-xs"
-                  />
-                ))}
+            {serverClobRelay ? (
+              <div>
+                Polymarket CLOB auth is applied on the server via <span className="font-mono">POLY_*</span> (and{" "}
+                <span className="font-mono">POLY_SECRET</span> for signature). Your wallet only signs the order payload.
               </div>
-            </div>
-          )}
+            ) : (
+              <div>
+                Set <span className="font-mono">POLY_API_KEY</span>, <span className="font-mono">POLY_ADDRESS</span>,{" "}
+                <span className="font-mono">POLY_PASSPHRASE</span>, and <span className="font-mono">POLY_SECRET</span>{" "}
+                in the server environment, then restart. <span className="font-mono">PLACE</span> will fail until then.
+              </div>
+            )}
+          </div>
           <div className="overflow-x-auto rounded-lg border border-border/50 bg-black/20">
             <Table>
               <TableHeader>
@@ -206,23 +185,27 @@ export function OptimizationResults({ result }: { result: OptimizationResponse }
                   result.trades.map((trade) => (
                     <TableRow key={`${trade.marketId}-${trade.tradeType}`} className="border-border/50 text-sm">
                       <TableCell>
-                        <div className="font-medium text-foreground">
-                          {trade.polymarketUrl ? (
-                            <a
-                              href={trade.polymarketUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="hover:underline"
-                            >
-                              {trade.question}
-                            </a>
-                          ) : (
-                            trade.question
-                          )}
-                        </div>
-                        <div className="font-mono-data text-xs text-muted-foreground" title={trade.marketId}>
-                          {formatMarketIdShort(trade.marketId)}
-                        </div>
+                        {trade.polymarketUrl ? (
+                          <a
+                            href={trade.polymarketUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block rounded-sm hover:underline"
+                            title="Open this market on Polymarket"
+                          >
+                            <div className="font-medium text-foreground">{trade.question}</div>
+                            <div className="font-mono-data text-xs text-muted-foreground" title={trade.marketId}>
+                              {formatMarketIdShort(trade.marketId)} · Open on Polymarket
+                            </div>
+                          </a>
+                        ) : (
+                          <>
+                            <div className="font-medium text-foreground">{trade.question}</div>
+                            <div className="font-mono-data text-xs text-muted-foreground" title={trade.marketId}>
+                              {formatMarketIdShort(trade.marketId)}
+                            </div>
+                          </>
+                        )}
                       </TableCell>
                       <TableCell className={trade.tradeType === "buy_yes" ? "text-emerald-400" : "text-red-400"}>
                         {trade.tradeType.replace("_", " ").toUpperCase()}

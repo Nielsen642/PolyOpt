@@ -525,7 +525,9 @@ export default function CorrelationHeatmap() {
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="min-w-0">
                                     <div className="text-sm font-semibold text-foreground truncate">{t.question}</div>
-                                    <div className="text-xs font-mono text-muted-foreground">{t.marketId}</div>
+                                    <div className="text-xs font-mono text-muted-foreground" title={t.marketId}>
+                                      {truncateId(t.marketId, 4, 4)}
+                                    </div>
                                   </div>
                                   {t.polymarketUrl ? (
                                     <a

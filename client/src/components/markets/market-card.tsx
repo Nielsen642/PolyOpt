@@ -3,7 +3,6 @@ import { Activity, BellRing, Info, Network } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatCompactNumber, formatCurrency, formatPercent, formatSignedCurrency } from "@/lib/formatters";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip } from "recharts";
 import { Link } from "wouter";
@@ -94,7 +93,7 @@ export function MarketCard({
           <div>
             <h3 className="text-lg font-semibold text-foreground">{market.question}</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Backend-derived market state from tracked position flow and exposure concentration.
+              Prices/depth from CLOB. Volume/open-interest/liquidity from Polymarket Gamma API.
             </p>
           </div>
         </div>
@@ -114,49 +113,23 @@ export function MarketCard({
           </div>
 
           <div className="grid grid-cols-2 gap-3 text-sm">
-            <Metric label="Open Interest" value={formatCurrency(openInterest)} />
-            <Metric
-              label={
-                <span className="inline-flex items-center gap-2">
-                  Confidence
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Info className="h-3.5 w-3.5 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-[18rem] text-xs leading-5">
-                      Confidence is derived from how imbalanced the YES/NO share composition is for this tracked market.
-                      Higher confidence generally means the probability estimate is based on a clearer net position.
-                    </TooltipContent>
-                  </Tooltip>
-                </span>
-              }
-              value={formatPercent(market.confidence)}
-            />
-            <Metric label="Total Shares" value={formatCompactNumber(market.totalShares)} />
-            <Metric label="Net Exposure" value={formatSignedCurrency(market.netExposure)} />
+            <Metric label="Market Open Interest" value={market.marketOpenInterest != null ? formatCurrency(market.marketOpenInterest) : "n/a"} />
+            <Metric label="24h Volume" value={market.marketVolume24h != null ? formatCurrency(market.marketVolume24h) : "n/a"} />
+            <Metric label="Liquidity" value={market.marketLiquidity != null ? formatCurrency(market.marketLiquidity) : "n/a"} />
+            <Metric label="Your Net Exposure" value={formatSignedCurrency(market.netExposure)} />
           </div>
 
-          {market.confidenceBreakdown ? (
-            <div className="rounded-lg border border-border/40 bg-black/15 p-3 text-[11px] text-muted-foreground leading-relaxed">
-              <div className="font-semibold text-foreground text-xs mb-1.5">Confidence decomposition</div>
-              <div className="grid grid-cols-2 gap-x-2 gap-y-1">
-                <span>Imbalance ratio</span>
-                <span className="font-mono-data text-foreground text-right">
-                  {formatPercent(market.confidenceBreakdown.imbalanceRatio)}
-                </span>
-                <span>YES / NO shares</span>
-                <span className="font-mono-data text-foreground text-right">
-                  {formatCompactNumber(market.confidenceBreakdown.yesShares)} /{" "}
-                  {formatCompactNumber(market.confidenceBreakdown.noShares)}
-                </span>
-                <span>Book mid</span>
-                <span className="text-right text-foreground">
-                  {market.confidenceBreakdown.bookMidAvailable ? "YES token" : "Inferred"}
-                </span>
-              </div>
-              <p className="mt-2 text-[10px] opacity-90">{market.confidenceBreakdown.note}</p>
+          <div className="rounded-lg border border-border/40 bg-black/15 p-3 text-[11px] text-muted-foreground leading-relaxed">
+            <div className="font-semibold text-foreground text-xs mb-1.5">Position context</div>
+            <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+              <span>Your shares (YES / NO)</span>
+              <span className="font-mono-data text-foreground text-right">
+                {formatCompactNumber(market.totalYesShares)} / {formatCompactNumber(market.totalNoShares)}
+              </span>
+              <span>Position value proxy</span>
+              <span className="font-mono-data text-foreground text-right">{formatCurrency(openInterest)}</span>
             </div>
-          ) : null}
+          </div>
 
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Activity className="h-4 w-4" />

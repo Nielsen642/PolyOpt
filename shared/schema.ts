@@ -60,6 +60,8 @@ export const positionRecordSchema = z.object({
   yesShares: z.number().nonnegative(),
   noShares: z.number().nonnegative(),
   entryPrice: z.number().min(0).max(1),
+  apiCurrentPrice: z.number().min(0).max(1).optional(),
+  apiCurrentValue: z.number().nonnegative().optional(),
 });
 
 export const confidenceBreakdownSchema = z.object({
@@ -92,6 +94,9 @@ export const marketSnapshotSchema = z.object({
   noExposure: z.number(),
   netExposure: z.number(),
   openInterest: z.number().nonnegative(),
+  marketOpenInterest: z.number().nonnegative().optional(),
+  marketVolume24h: z.number().nonnegative().optional(),
+  marketLiquidity: z.number().nonnegative().optional(),
   liquidityScore: z.number().min(0).max(1),
   confidence: z.number().min(0).max(1),
   confidenceBreakdown: confidenceBreakdownSchema.optional(),

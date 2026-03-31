@@ -21,6 +21,7 @@ export interface AppConfig {
     POLY_PASSPHRASE?: string;
     POLY_TIMESTAMP?: string;
   };
+  clobRelaySecret?: string;
   apiRateLimitWindowMs: number;
   apiRateLimitMax: number;
   authRateLimitWindowMs: number;
@@ -48,6 +49,7 @@ export function loadConfig(): AppConfig {
   if (process.env.POLY_SIGNATURE) relay.POLY_SIGNATURE = process.env.POLY_SIGNATURE;
   if (process.env.POLY_PASSPHRASE) relay.POLY_PASSPHRASE = process.env.POLY_PASSPHRASE;
   if (process.env.POLY_TIMESTAMP) relay.POLY_TIMESTAMP = process.env.POLY_TIMESTAMP;
+  const clobRelaySecret = process.env.POLY_SECRET?.trim() || undefined;
 
   return {
     port,
@@ -68,6 +70,7 @@ export function loadConfig(): AppConfig {
     polymarketClobTimeoutMs: Number.parseInt(process.env.POLYMARKET_CLOB_TIMEOUT_MS || "20000", 10),
     staleWarningAfterMs: Number.parseInt(process.env.FEED_STALE_WARNING_MS || "120000", 10),
     clobRelayHeaders: relay,
+    clobRelaySecret,
     apiRateLimitWindowMs: Number.parseInt(process.env.API_RATE_LIMIT_WINDOW_MS || "60000", 10),
     apiRateLimitMax: Number.parseInt(process.env.API_RATE_LIMIT_MAX || "300", 10),
     authRateLimitWindowMs: Number.parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS || "900000", 10),

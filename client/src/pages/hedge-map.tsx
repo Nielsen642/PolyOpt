@@ -37,12 +37,12 @@ export default function HedgeMapPage() {
     if (!detail) return [];
     return detail.positions.map((position, index) => {
       const angle = (index / Math.max(detail.positions.length, 1)) * Math.PI * 2;
-      const radius = 170;
+      const radius = 190;
       return {
         ...position,
         x: 220 + Math.cos(angle) * radius,
         y: 220 + Math.sin(angle) * radius,
-        size: 20 + position.allocationWeight * 70,
+        size: 26 + position.allocationWeight * 90,
       };
     });
   }, [detail]);
@@ -104,8 +104,8 @@ export default function HedgeMapPage() {
     [nodes, degrees],
   );
 
+  const showGraphNodeIdLabels = nodes.length <= 225;
   const selectedNode = nodes.find((node) => node.marketId === selectedMarketId) ?? nodes[0];
-
   useEffect(() => {
     if (!requestedMarketId) return;
     const exists = nodes.some((n: any) => n.marketId === requestedMarketId);
@@ -140,142 +140,8 @@ export default function HedgeMapPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[2fr_1fr]">
-        <Card className="glass-panel border-border/50">
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <CardTitle>Correlation Graph</CardTitle>
-              <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground whitespace-nowrap">Edge threshold</span>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={edgeThreshold}
-                    onChange={(e) =>
-                      setEdgeThreshold(Math.min(1, Math.max(0, Number.isFinite(Number(e.target.value)) ? Number(e.target.value) : 0)))
-                    }
-                    className="w-20"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setEdgeThreshold(0.1)}
-                  >
-                    Low
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setEdgeThreshold(0.3)}
-                  >
-                    Med
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setEdgeThreshold(0.6)}
-                  >
-                    High
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="overflow-x-auto space-y-4">
-            <svg viewBox="0 0 440 440" className="mx-auto h-[440px] w-full max-w-[440px]">
-              {edges.map((edge) => {
-                const from = nodes.find((node) => node.marketId === edge.from);
-                const to = nodes.find((node) => node.marketId === edge.to);
-                if (!from || !to) return null;
-
-                return (
-                  <line
-                    key={`${edge.from}-${edge.to}`}
-                    x1={from.x}
-                    y1={from.y}
-                    x2={to.x}
-                    y2={to.y}
-                    stroke={edge.value > 0 ? "#3b82f6" : "#ef4444"}
-                    strokeOpacity={0.4 + Math.abs(edge.value) * 0.4}
-                    strokeWidth={1 + Math.abs(edge.value) * 4}
-                  />
-                );
-              })}
-
-              {nodes.map((node) => (
-                <g
-                  key={node.marketId}
-                  onClick={() => setSelectedMarketId(node.marketId)}
-                  style={{ cursor: "pointer" }}
-                >
-                  <circle
-                    cx={node.x}
-                    cy={node.y}
-                    r={node.size / 2}
-                    fill={node.netExposure >= 0 ? "#10b981" : "#ef4444"}
-                    fillOpacity={selectedNode?.marketId === node.marketId ? 0.95 : 0.75}
-                    stroke={selectedNode?.marketId === node.marketId ? "#ffffff" : "transparent"}
-                    strokeWidth={2}
-                  />
-                  <text
-                    x={node.x}
-                    y={node.y + 4}
-                    fill="#ffffff"
-                    fontSize="11"
-                    textAnchor="middle"
-                    className="pointer-events-none"
-                  >
-                    {truncateId(node.marketId)}
-                  </text>
-                </g>
-              ))}
-            </svg>
-
-            <div className="flex flex-col gap-3 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between">
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="font-semibold text-foreground text-xs">Legend</span>
-                <div className="flex items-center gap-1">
-                  <span className="h-2 w-4 rounded bg-[#3b82f6]" />
-                  <span>Positive linkage</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="h-2 w-4 rounded bg-[#ef4444]" />
-                  <span>Negative linkage</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="h-[1px] w-6 rounded bg-border" />
-                  <span>0.1 – 0.3</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="h-[2px] w-6 rounded bg-border" />
-                  <span>0.3 – 0.6</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="h-[3px] w-6 rounded bg-border" />
-                  <span>&gt; 0.6</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    className="h-3 w-3 rounded border-border bg-background"
-                    checked={showOnlySelectedEdges}
-                    onChange={(e) => setShowOnlySelectedEdges(e.target.checked)}
-                  />
-                  <span>Show edges for selected node only</span>
-                </label>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="glass-panel border-border/50">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <Card className="glass-panel border-border/70">
           <CardHeader>
             <CardTitle>Selected Node & Rankings</CardTitle>
           </CardHeader>
@@ -340,6 +206,134 @@ export default function HedgeMapPage() {
             ) : (
               <div className="text-sm text-muted-foreground">Select a market node to inspect its hedge posture.</div>
             )}
+          </CardContent>
+        </Card>
+
+        <Card className="glass-panel border-border/30">
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <CardTitle>Correlation Graph</CardTitle>
+              <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground whitespace-nowrap">Edge threshold</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={edgeThreshold}
+                    onChange={(e) =>
+                      setEdgeThreshold(Math.min(1, Math.max(0, Number.isFinite(Number(e.target.value)) ? Number(e.target.value) : 0)))
+                    }
+                    className="w-20"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setEdgeThreshold(0.1)}>
+                    Low
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setEdgeThreshold(0.3)}>
+                    Med
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setEdgeThreshold(0.6)}>
+                    High
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="overflow-x-auto space-y-4">
+            <div className="mx-auto w-full max-w-none">
+              <div className="mx-auto w-full max-w-[720px] 2xl:max-w-[900px] aspect-square">
+                <svg viewBox="0 0 440 440" className="h-full w-full" preserveAspectRatio="xMidYMid meet">
+                  {edges.map((edge) => {
+                    const from = nodes.find((node) => node.marketId === edge.from);
+                    const to = nodes.find((node) => node.marketId === edge.to);
+                    if (!from || !to) return null;
+
+                    return (
+                      <line
+                        key={`${edge.from}-${edge.to}`}
+                        x1={from.x}
+                        y1={from.y}
+                        x2={to.x}
+                        y2={to.y}
+                        stroke={edge.value > 0 ? "#3b82f6" : "#ef4444"}
+                        strokeOpacity={0.4 + Math.abs(edge.value) * 0.4}
+                        strokeWidth={1 + Math.abs(edge.value) * 4}
+                      />
+                    );
+                  })}
+
+                  {nodes.map((node) => (
+                    <g
+                      key={node.marketId}
+                      onClick={() => setSelectedMarketId(node.marketId)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <circle
+                        cx={node.x}
+                        cy={node.y}
+                        r={node.size / 2}
+                        fill={node.netExposure >= 0 ? "#10b981" : "#ef4444"}
+                        fillOpacity={selectedNode?.marketId === node.marketId ? 0.95 : 0.75}
+                        stroke={selectedNode?.marketId === node.marketId ? "#ffffff" : "transparent"}
+                        strokeWidth={2}
+                      />
+                      {showGraphNodeIdLabels ? (
+                        <text
+                          x={node.x}
+                          y={node.y + 4}
+                          fill="#ffffff"
+                          fontSize="11"
+                          textAnchor="middle"
+                          className="pointer-events-none"
+                        >
+                          {truncateId(node.marketId)}
+                        </text>
+                      ) : null}
+                    </g>
+                  ))}
+                </svg>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="font-semibold text-foreground text-xs">Legend</span>
+                <div className="flex items-center gap-1">
+                  <span className="h-2 w-4 rounded bg-[#3b82f6]" />
+                  <span>Positive linkage</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="h-2 w-4 rounded bg-[#ef4444]" />
+                  <span>Negative linkage</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="h-[1px] w-6 rounded bg-border" />
+                  <span>0.1 – 0.3</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="h-[2px] w-6 rounded bg-border" />
+                  <span>0.3 – 0.6</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="h-[3px] w-6 rounded bg-border" />
+                  <span>&gt; 0.6</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="h-3 w-3 rounded border-border bg-background"
+                    checked={showOnlySelectedEdges}
+                    onChange={(e) => setShowOnlySelectedEdges(e.target.checked)}
+                  />
+                  <span>Show edges for selected node only</span>
+                </label>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>

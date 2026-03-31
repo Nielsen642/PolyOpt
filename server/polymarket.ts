@@ -222,6 +222,23 @@ function parseNumberArray(value: unknown): number[] {
   return [];
 }
 
+function inferYesPriceFromMarketMeta(market: PolymarketMarket | undefined): number | undefined {
+  if (!market) return undefined;
+  const outcomes = parseStringArray(market.outcomes).map((v) => v.trim().toLowerCase());
+  const prices = parseNumberArray(market.outcomePrices);
+  if (outcomes.length > 0 && prices.length === outcomes.length) {
+    const yesIdx = outcomes.findIndex((o) => o === "yes" || o.includes("yes"));
+    if (yesIdx >= 0) {
+      return clamp(prices[yesIdx], 0.01, 0.99);
+    }
+  }
+  if (prices.length >= 2) {
+    // Gamma usually returns [Yes, No]; if labels are missing, assume this ordering.
+    return clamp(prices[0], 0.01, 0.99);
+  }
+  return undefined;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
@@ -293,8 +310,6 @@ export async function fetchMarketsForPositions(
     for (const m of data) {
       const cid = cidKey(m);
       if (!cid) continue;
-      if (m.active === false) continue;
-      if (m.closed === true) continue;
       byCondition.set(cid, m);
     }
   }
@@ -405,6 +420,18 @@ function primaryMarketTitle(market: PolymarketMarket, conditionId: string): stri
     market.events?.find((event) => typeof event.title === "string" && event.title.trim().length > 0)?.title ??
     `Market ${conditionId.slice(0, 10)}...`
   );
+}
+
+function derivePolymarketUrl(market: PolymarketMarket | undefined): string | undefined {
+  if (!market) return undefined;
+  const rawSlug =
+    market.slug?.trim() ||
+    market.events?.find((event) => typeof event.slug === "string" && event.slug.trim().length > 0)?.slug?.trim();
+  if (!rawSlug) return undefined;
+  if (rawSlug.startsWith("http://") || rawSlug.startsWith("https://")) {
+    return rawSlug;
+  }
+  return `https://polymarket.com/event/${rawSlug}`;
 }
 
 function marketActivityScore(market: PolymarketMarket): number {
@@ -588,15 +615,20 @@ function invertNoSideStats(stats: OrderBookStats | undefined): OrderBookStats | 
   };
 }
 
-/**
- * Normalize Polymarket positions into PositionRecord[] (one row per conditionId).
- * Aggregates YES and NO outcome rows into yesShares / noShares; uses weighted avg for entryPrice.
- * Uses virtual portfolio id 1 ("Polymarket Account") and synthetic numeric ids.
- */
 export function normalizePolymarketPositions(
   polyPositions: PolymarketPosition[],
 ): PositionRecord[] {
-  type Agg = { yesShares: number; noShares: number; yesCost: number; noCost: number; title?: string };
+  type Agg = {
+    yesShares: number;
+    noShares: number;
+    yesCost: number;
+    noCost: number;
+    title?: string;
+    apiValueTotal: number;
+    apiValueCoveredShares: number;
+    apiYesPriceNumerator: number;
+    apiYesPriceCoveredShares: number;
+  };
   const byCondition = new Map<string, Agg>();
 
   for (const p of polyPositions) {
@@ -605,15 +637,49 @@ export function normalizePolymarketPositions(
     const outcome = (p.outcome || "").toLowerCase();
     let agg = byCondition.get(p.conditionId);
     if (!agg) {
-      agg = { yesShares: 0, noShares: 0, yesCost: 0, noCost: 0, title: p.title };
+      agg = {
+        yesShares: 0,
+        noShares: 0,
+        yesCost: 0,
+        noCost: 0,
+        title: p.title,
+        apiValueTotal: 0,
+        apiValueCoveredShares: 0,
+        apiYesPriceNumerator: 0,
+        apiYesPriceCoveredShares: 0,
+      };
       byCondition.set(p.conditionId, agg);
     }
+
+    const curPriceRaw = Number(p.curPrice);
+    const hasCurPrice = Number.isFinite(curPriceRaw);
+    const curPriceClamped = hasCurPrice ? clamp(curPriceRaw, 0, 1) : undefined;
+    const currentValueRaw = Number(p.currentValue);
+    const hasCurrentValue = Number.isFinite(currentValueRaw) && currentValueRaw >= 0;
+
     if (outcome === "yes") {
       agg.yesShares += size;
       agg.yesCost += size * avg;
+      if (curPriceClamped != null) {
+        agg.apiYesPriceNumerator += size * curPriceClamped;
+        agg.apiYesPriceCoveredShares += size;
+      }
     } else {
       agg.noShares += size;
       agg.noCost += size * avg;
+      if (curPriceClamped != null) {
+        // NO token probability implies YES probability of (1 - pNo).
+        agg.apiYesPriceNumerator += size * (1 - curPriceClamped);
+        agg.apiYesPriceCoveredShares += size;
+      }
+    }
+
+    if (hasCurrentValue) {
+      agg.apiValueTotal += currentValueRaw;
+      agg.apiValueCoveredShares += size;
+    } else if (curPriceClamped != null) {
+      agg.apiValueTotal += size * curPriceClamped;
+      agg.apiValueCoveredShares += size;
     }
   }
 
@@ -624,6 +690,15 @@ export function normalizePolymarketPositions(
     const totalShares = agg.yesShares + agg.noShares;
     const totalCost = agg.yesCost + agg.noCost;
     const entryPrice = totalShares > 0 ? clamp(totalCost / totalShares, 0.01, 0.99) : 0.5;
+    const apiCurrentPrice =
+      agg.apiYesPriceCoveredShares > 0
+        ? clamp(agg.apiYesPriceNumerator / agg.apiYesPriceCoveredShares, 0, 1)
+        : undefined;
+    const apiCurrentValue =
+      totalShares > 0 && agg.apiValueCoveredShares >= totalShares * 0.999
+        ? Math.max(0, agg.apiValueTotal)
+        : undefined;
+
     records.push({
       id: syntheticId++,
       portfolioId: VIRTUAL_PORTFOLIO_ID,
@@ -631,6 +706,8 @@ export function normalizePolymarketPositions(
       yesShares: round(agg.yesShares, 2),
       noShares: round(agg.noShares, 2),
       entryPrice: round(entryPrice, 4),
+      ...(apiCurrentPrice != null ? { apiCurrentPrice: round(apiCurrentPrice, 4) } : {}),
+      ...(apiCurrentValue != null ? { apiCurrentValue: round(apiCurrentValue, 2) } : {}),
     });
   }
   return records;
@@ -667,6 +744,7 @@ export function normalizePolymarketMarkets(
 
 
     let yesPrice = 0.5;
+    let priceSource: "yes_book_mid" | "no_book_inversion" | "gamma_outcome_price" | "fallback_50" = "fallback_50";
     let yesStats: OrderBookStats | undefined;
     let fallbackNoBook: OrderBook | undefined;
     let fallbackNoTokenId: string | undefined;
@@ -680,6 +758,7 @@ export function normalizePolymarketMarkets(
       if (outcome === "yes") {
         yesPrice = midPriceFromBook(book);
         yesStats = orderBookStatsFromBook(book);
+        priceSource = "yes_book_mid";
         break;
       }
 
@@ -694,8 +773,19 @@ export function normalizePolymarketMarkets(
       yesStats = invertNoSideStats(stats);
       const noMid = midPriceFromBook(fallbackNoBook);
       yesPrice = clamp(1 - noMid, 0.01, 0.99);
+      priceSource = "no_book_inversion";
       void fallbackNoTokenId;
     }
+
+    const meta = marketByCondition.get(conditionId);
+    if (priceSource === "fallback_50") {
+      const gammaYes = inferYesPriceFromMarketMeta(meta);
+      if (gammaYes != null) {
+        yesPrice = gammaYes;
+        priceSource = "gamma_outcome_price";
+      }
+    }
+
     yesPrice = clamp(yesPrice, 0.01, 0.99);
     const noPrice = round(1 - yesPrice, 4);
     const currentPrice = yesPrice;
@@ -711,18 +801,24 @@ export function normalizePolymarketMarkets(
       yesShares: round(totalYesShares, 2),
       noShares: round(totalNoShares, 2),
       totalShares: round(totalShares, 2),
-      bookMidAvailable: !!yesStats,
-      note: yesStats
-        ? "Confidence equals YES/NO share imbalance ratio; mid price from YES order book."
-        : "Confidence from share imbalance; YES mid may be inferred from NO token book.",
+      bookMidAvailable: priceSource === "yes_book_mid" || priceSource === "no_book_inversion",
+      note:
+        priceSource === "yes_book_mid"
+          ? "Confidence equals YES/NO share imbalance ratio; mid price from YES order book."
+          : priceSource === "no_book_inversion"
+            ? "Confidence from share imbalance; YES mid inferred from NO token order book."
+            : priceSource === "gamma_outcome_price"
+              ? "Confidence from share imbalance; current YES price from Gamma outcomePrices fallback."
+              : "Confidence from share imbalance; current YES price fell back to neutral 50%.",
     };
 
-    const meta = marketByCondition.get(conditionId);
+    const marketOpenInterest =
+      meta != null ? parseNum(meta.openInterestNum ?? meta.openInterest) : undefined;
+    const marketVolume24h = meta != null ? parseNum(meta.volume24hr ?? meta.volume) : undefined;
+    const marketLiquidity = meta != null ? parseNum(meta.liquidityNum ?? meta.liquidity) : undefined;
     const question =
       meta?.question ?? meta?.title ?? `Market ${conditionId.slice(0, 10)}...`;
-    const polymarketUrl = meta?.slug
-      ? `https://polymarket.com/event/${meta.slug}`
-      : undefined;
+    const polymarketUrl = derivePolymarketUrl(meta);
 
     snapshots.push({
       id: conditionId,
@@ -739,6 +835,18 @@ export function normalizePolymarketMarkets(
       noExposure: round(noExposure, 2),
       netExposure: round(netExposure, 2),
       openInterest: round(openInterest, 2),
+      marketOpenInterest:
+        marketOpenInterest != null && Number.isFinite(marketOpenInterest)
+          ? round(Math.max(0, marketOpenInterest), 2)
+          : undefined,
+      marketVolume24h:
+        marketVolume24h != null && Number.isFinite(marketVolume24h)
+          ? round(Math.max(0, marketVolume24h), 2)
+          : undefined,
+      marketLiquidity:
+        marketLiquidity != null && Number.isFinite(marketLiquidity)
+          ? round(Math.max(0, marketLiquidity), 2)
+          : undefined,
       liquidityScore: 0, // optional: set from meta.liquidity if needed
       confidence: round(confidence, 4),
       confidenceBreakdown,

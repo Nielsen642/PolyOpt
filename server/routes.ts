@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { spawn } from "child_process";
+import { createHmac } from "crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import type { AuthUser, User } from "@shared/schema";
 import {
@@ -35,6 +36,24 @@ const POLYMARKET_VIRTUAL_PORTFOLIO = {
   name: "Polymarket Account",
   userId: 0,
 } as import("@shared/schema").Portfolio;
+
+function buildPolyL2Signature(
+  secret: string,
+  timestamp: number,
+  method: string,
+  requestPath: string,
+  body?: string,
+): string {
+  const sanitized = secret.replace(/-/g, "+").replace(/_/g, "/").replace(/[^A-Za-z0-9+/=]/g, "");
+  const key = Buffer.from(sanitized, "base64");
+  let message = `${timestamp}${method}${requestPath}`;
+  if (body !== undefined) {
+    message += body;
+  }
+  const base64 = createHmac("sha256", key).update(message).digest("base64");
+  // Polymarket uses URL-safe base64 while preserving "=" padding.
+  return base64.replace(/\+/g, "-").replace(/\//g, "_");
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -741,6 +760,29 @@ export async function registerRoutes(
         polyHeaders[key] = value;
       }
     }
+    const relayBody = JSON.stringify(body);
+    const hasCoreL2Headers =
+      typeof polyHeaders.POLY_API_KEY === "string" &&
+      polyHeaders.POLY_API_KEY.trim().length > 0 &&
+      typeof polyHeaders.POLY_ADDRESS === "string" &&
+      polyHeaders.POLY_ADDRESS.trim().length > 0 &&
+      typeof polyHeaders.POLY_PASSPHRASE === "string" &&
+      polyHeaders.POLY_PASSPHRASE.trim().length > 0;
+    const needsGeneratedL2Sig =
+      hasCoreL2Headers &&
+      Boolean(config.clobRelaySecret) &&
+      (!polyHeaders.POLY_SIGNATURE || !polyHeaders.POLY_TIMESTAMP);
+    if (needsGeneratedL2Sig) {
+      const ts = Math.floor(Date.now() / 1000);
+      polyHeaders.POLY_TIMESTAMP = String(ts);
+      polyHeaders.POLY_SIGNATURE = buildPolyL2Signature(
+        config.clobRelaySecret as string,
+        ts,
+        "POST",
+        "/order",
+        relayBody,
+      );
+    }
     const missingHeaders = forwardHeaders.filter((name) => {
       const value = polyHeaders[name];
       return !(typeof value === "string" && value.trim().length > 0);
@@ -755,7 +797,7 @@ export async function registerRoutes(
       const r = await fetch("https://clob.polymarket.com/order", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...polyHeaders },
-        body: JSON.stringify(body),
+        body: relayBody,
       });
       const rawData = await r.json().catch(async () => {
         const text = await r.text().catch(() => "");
