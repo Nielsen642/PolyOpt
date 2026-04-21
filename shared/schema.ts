@@ -65,7 +65,6 @@ export const positionRecordSchema = z.object({
 });
 
 export const confidenceBreakdownSchema = z.object({
-  /** |yes - no| / totalShares — same numeric basis as confidence in this app */
   imbalanceRatio: z.number().min(0).max(1),
   yesShares: z.number().nonnegative(),
   noShares: z.number().nonnegative(),

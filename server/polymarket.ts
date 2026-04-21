@@ -1,6 +1,5 @@
 
 import type { MarketSnapshot, PositionRecord } from "@shared/schema";
-
 const DATA_API_BASE = "https://data-api.polymarket.com";
 const CLOB_API_BASE = "https://clob.polymarket.com";
 
@@ -36,8 +35,6 @@ async function fetchWithRetry(url: string, init: RequestInit, opts: PolymarketFe
     try {
       const res = await fetch(url, { ...init, signal: controller.signal });
       clearTimeout(timeout);
-
-      // Retry on rate-limit or server errors.
       if (!res.ok && (res.status === 429 || res.status >= 500)) {
         lastErr = new Error(`HTTP ${res.status} from ${url}`);
         await sleep(opts.retryBaseDelayMs * 2 ** attempt);
@@ -56,8 +53,6 @@ async function fetchWithRetry(url: string, init: RequestInit, opts: PolymarketFe
   }
   throw lastErr ?? new Error("Fetch failed");
 }
-
-// --- Polymarket API types (production response shapes) ---
 
 export interface PolymarketPosition {
   conditionId: string;
@@ -98,7 +93,6 @@ export interface PolymarketMarket {
   archived?: boolean;
   events?: Array<{ slug?: string; title?: string }>;
   category?: string;
-  // Gamma markets include tags and categories; keep them generic.
   tags?: Array<{ id?: string; name?: string; label?: string; slug?: string }>;
 }
 
@@ -164,7 +158,6 @@ function parseStringArray(value: unknown): string[] {
           .filter(Boolean);
       }
     } catch {
-      // Some responses may be comma-separated instead of JSON.
       return raw
         .split(",")
         .map((item) => item.trim())
@@ -233,7 +226,6 @@ function inferYesPriceFromMarketMeta(market: PolymarketMarket | undefined): numb
     }
   }
   if (prices.length >= 2) {
-    // Gamma usually returns [Yes, No]; if labels are missing, assume this ordering.
     return clamp(prices[0], 0.01, 0.99);
   }
   return undefined;
@@ -297,7 +289,6 @@ export async function fetchMarketsForPositions(
         const data = (await res.json()) as PolymarketMarket[];
         if (Array.isArray(data) && data.length > 0) return data;
       } catch {
-        // try next encoding
       }
     }
     return [];
@@ -451,7 +442,6 @@ export async function fetchTopMarketsByCategory(
     retryAttempts: opts?.retryAttempts ?? 3,
     retryBaseDelayMs: opts?.retryBaseDelayMs ?? 500,
   };
-  // Fetch a broad slice of markets from Gamma and filter client-side.
   const url = new URL("https://gamma-api.polymarket.com/markets");
   url.searchParams.set("limit", "400");
   url.searchParams.set("active", "true");
@@ -548,9 +538,6 @@ export async function fetchOrderBooks(
   return Array.isArray(data) ? data : [];
 }
 
-/**
- * Derive mid price from order book (best bid + best ask) / 2.
- */
 export function midPriceFromBook(book: OrderBook): number {
   const bestBid = book.bids?.[0]?.price;
   const bestAsk = book.asks?.[0]?.price;
@@ -601,8 +588,6 @@ function orderBookStatsFromBook(book: OrderBook, topLevels = 3): OrderBookStats 
 
 function invertNoSideStats(stats: OrderBookStats | undefined): OrderBookStats | undefined {
   if (!stats) return undefined;
-  // If token represents NO probability pNo, then YES probability pYes = 1 - pNo.
-  // Invert best bid/ask and swap depth sides.
   const bestBidPrice = stats.bestAskPrice != null ? round(1 - stats.bestAskPrice, 6) : undefined;
   const bestAskPrice = stats.bestBidPrice != null ? round(1 - stats.bestBidPrice, 6) : undefined;
   const spread = stats.spread != null ? stats.spread : undefined;
@@ -668,7 +653,6 @@ export function normalizePolymarketPositions(
       agg.noShares += size;
       agg.noCost += size * avg;
       if (curPriceClamped != null) {
-        // NO token probability implies YES probability of (1 - pNo).
         agg.apiYesPriceNumerator += size * (1 - curPriceClamped);
         agg.apiYesPriceCoveredShares += size;
       }
@@ -847,7 +831,7 @@ export function normalizePolymarketMarkets(
         marketLiquidity != null && Number.isFinite(marketLiquidity)
           ? round(Math.max(0, marketLiquidity), 2)
           : undefined,
-      liquidityScore: 0, // optional: set from meta.liquidity if needed
+      liquidityScore: 0,
       confidence: round(confidence, 4),
       confidenceBreakdown,
       bestBidPrice: yesStats?.bestBidPrice != null ? round(yesStats.bestBidPrice, 4) : undefined,
@@ -889,10 +873,6 @@ export function getTokenIdsFromPositions(polyPositions: PolymarketPosition[]): {
   return { tokenIds, tokenToCondition, tokenToOutcome };
 }
 
-/**
- * Resolve condition IDs to YES/NO token IDs for order building.
- * Fetches Gamma API markets and maps conditionId -> { yesTokenId, noTokenId }.
- */
 export async function getMarketTokenIds(
   conditionIds: string[],
   opts?: Partial<PolymarketFetchOptions>,
@@ -948,7 +928,6 @@ export async function getMarketTokenIds(
         const data = (await res.json()) as PolymarketMarket[];
         if (Array.isArray(data) && data.length > 0) return data;
       } catch {
-        // try next encoding
       }
     }
     return [];
@@ -969,7 +948,6 @@ export async function getMarketTokenIds(
       }
     }
   } catch {
-    // ignore; best-effort endpoint
   }
 
   return result;

@@ -30,7 +30,6 @@ export function useWallet(): WalletContextValue {
     walletClient: walletClientResult.data ?? undefined,
     connectWalletConnect: connect,
     connectInjectedWallet: connect,
-    // Manual wallet entry is no longer needed with AppKit modal; keep no-op to satisfy existing callers.
     connectManualWallet: () => undefined,
     disconnectWallet: () => disconnect(),
   };

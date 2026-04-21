@@ -7,6 +7,6 @@ export function useMarkets(enabled = true) {
     queryKey: [api.markets.list.path],
     queryFn: marketApi.list,
     enabled,
-    refetchInterval: 60000, // Refetch every minute as fallback
+    refetchInterval: 60000,
   });
 }

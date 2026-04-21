@@ -51,7 +51,7 @@ function buildPolyL2Signature(
     message += body;
   }
   const base64 = createHmac("sha256", key).update(message).digest("base64");
-  // Polymarket uses URL-safe base64 while preserving "=" padding.
+
   return base64.replace(/\+/g, "-").replace(/\//g, "_");
 }
 
@@ -564,7 +564,7 @@ export async function registerRoutes(
       }
 
       const pyProcess = spawn(optimizerCommand, optimizerArgs);
-      
+
       let outputData = "";
       let errorData = "";
       let processFailed = false;
@@ -618,7 +618,7 @@ export async function registerRoutes(
       pyProcess.stdin.end();
 
     } catch (err) {
-       if (err instanceof z.ZodError) {
+      if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
       res.status(500).json({ message: "Internal server error" });

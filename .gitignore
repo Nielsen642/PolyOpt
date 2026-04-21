@@ -6,8 +6,6 @@ venv
 server/public
 vite.config.ts.*
 *.tar.gz
-
-# Local env (copy .env.example to .env and fill in secrets)
 .env
 .env.local
 .env.*.local

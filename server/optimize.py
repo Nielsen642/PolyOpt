@@ -291,7 +291,6 @@ def preview_hedge(payload):
             },
         }
 
-    # Build the same scenario set as the full optimization so metrics are comparable.
     liquidity_score = np.clip(1.0 - allocation_weights, 0.15, 1.0)
     volatility = 0.06 + np.abs(prices - 0.5) * 0.28 + (1.0 - liquidity_score) * 0.12
     correlation_matrix = build_correlation_matrix(positions, correlations)

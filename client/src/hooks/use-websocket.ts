@@ -12,8 +12,6 @@ interface LiveMarketData {
 export function useMarketPrices(marketIds: string[]) {
   const [prices, setPrices] = useState<Record<string, LiveMarketData>>({});
   const wsRef = useRef<WebSocket | null>(null);
-
-  // Deep comparison of array to prevent infinite re-renders
   const marketIdsJson = JSON.stringify(marketIds);
 
   useEffect(() => {

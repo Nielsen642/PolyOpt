@@ -21,11 +21,9 @@ export default function Markets() {
     retry: false,
     refetchInterval: 60000,
   });
-  
-  // Extract market IDs for WebSocket subscription
+
   const marketIds = markets?.map(m => m.id) || [];
-  
-  // Realtime WS prices overlay
+
   const supabaseFeed = useSupabaseMarketFeed(marketIds);
   const livePrices = useMarketPricesWhenEnabled(marketIds, !supabaseFeed.isConnected);
 

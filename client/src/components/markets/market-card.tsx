@@ -46,7 +46,7 @@ export function MarketCard({
 
   useEffect(() => {
     const now = Date.now();
-    if (now - lastSampleAtRef.current < 10_000) return; // throttle samples
+    if (now - lastSampleAtRef.current < 10_000) return;
     lastSampleAtRef.current = now;
 
     const cutoff = now - historyMinutes * 60_000;

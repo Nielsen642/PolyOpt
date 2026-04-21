@@ -14,11 +14,9 @@ export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-
   if (isAuthenticated) {
     return <Redirect to="/" />;
   }
-
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6">
       <Card className="glass-panel w-full max-w-md border-border/50">

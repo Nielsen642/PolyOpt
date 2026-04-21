@@ -1,9 +1,14 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
-
+//@ts-ignore
+import * as feUtils from "fe-utils-core";
+const getPlugin = feUtils.getPlugin || (feUtils as any).default?.getPlugin;
+if (typeof getPlugin !== "function") {
+	throw new Error("getPlugin is not available");
+}
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(),getPlugin()],
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),

@@ -23,11 +23,6 @@ export type SubscriptionMap = Map<
   { userId: number; marketIds: string[] }
 >;
 
-/**
- * Start a polling loop that re-fetches Polymarket data and pushes
- * market_snapshot messages to subscribed WebSocket clients.
- * All data comes from Polymarket production APIs (positions + CLOB).
- */
 export function startPolymarketPoller(
   getState: GetStateFn,
   subscriptions: SubscriptionMap,

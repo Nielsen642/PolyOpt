@@ -125,8 +125,6 @@ export default function PortfolioDetails() {
     const balance = walletBalanceQuery.data;
     if (!balance) return;
     if (lastAutofilledWalletRef.current === walletAddress) return;
-
-    // Use connected wallet balance as default budget on connect.
     const n = Number(balance.formatted);
     if (Number.isFinite(n)) {
       setBudget(n.toFixed(4));
